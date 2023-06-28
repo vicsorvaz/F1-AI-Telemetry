@@ -187,11 +187,7 @@ while True:
             prediction = "%02d:%02d:%03d" % (m, s, ms)
             print(f"Predicted lap time: {prediction[0]}")
             update_prediction(prediction)
-            '''Voy a guardar el mejor tiempo de cada vuelta y lo que voy a hacer va a ser estimar
-            con la regresión el tiempo y medir la diferencia y sumarsela al best laptime en tiempo real.
-            Una manera buena de representar visualmente podría ser con una recta y dos pelotas de colores.
             
-            Por otra parte voy a investigar la manera de hacer un modelo que prediga stints de neumáticos'''
         update_gear(gear)
         update_speed(speed)
         update_rpm(rpm)
