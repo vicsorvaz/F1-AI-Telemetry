@@ -1,0 +1,40 @@
+import os
+import json
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import joblib
+
+# Ubicación de los archivos JSON
+folder = './DATA_OLD/4'
+
+# Listas para los datos
+X = []
+y = []
+
+# Lee todos los archivos en la carpeta
+for filename in os.listdir(folder):
+    # Ignora el archivo 1.json (la primera vuelta es de calentamiento)
+    if filename.endswith('.json') and filename != '1.json':
+        with open(os.path.join(folder, filename), 'r') as f:
+            data = json.load(f)
+            X.extend(data['X'])
+            y.extend(data['y'])
+
+# Convierte las listas a arrays de NumPy
+X = np.array(X)
+y = np.array(y)
+
+# Divide los datos en conjuntos de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Entrena el modelo de bosques aleatorios
+regr = RandomForestRegressor(n_estimators=100, random_state=42)
+regr.fit(X_train, y_train)
+
+# Evalúa el rendimiento del modelo
+score = regr.score(X_test, y_test)
+print(f"R^2 score: {score}")
+
+# Guarda el modelo entrenado
+joblib.dump(regr, 'random_forest_regressor.pkl')
