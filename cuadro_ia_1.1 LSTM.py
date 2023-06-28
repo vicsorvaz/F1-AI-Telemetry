@@ -18,6 +18,7 @@ model_lstmconv = load_model('lstm_modelconv.h5')
 sgd = joblib.load('sgd_regressor.pkl')
 scaler = joblib.load('scaler.pkl')
 
+last_10_steps = []
 
 X = []
 y = []
@@ -50,7 +51,7 @@ root = tk.Tk()
 root.title("Velocidad en tiempo real")
 
 # Establecer la posición de la ventana de Tkinter
-root.geometry("+50+700")
+root.geometry("+50+50")
 
 
 gear_label = tk.Label(root, text="0", font=("Helvetica", 75))
@@ -133,7 +134,7 @@ def update_diff_best(future_laptime_ms, last_lap):
     root.update()
 
 # Establecer la posición de la ventana de Matplotlib
-fig.canvas.manager.window.geometry("+700+200")
+fig.canvas.manager.window.geometry("+500+150")
 
 car_position = -1
 first_time = True
@@ -170,29 +171,51 @@ while True:
             X.append([car_position, rpm, speed, acceleration, gear])
             y.append(laptime_ms)  # Suponiendo que deseas predecir el tiempo de vuelta
             
-            prediction_ms = regr.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = sgd.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = model_lstm.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = model_lstmconv.predict([[car_position, rpm, speed, acceleration, gear]])
+            new_data = np.array([car_position, rpm, speed, acceleration, gear])
 
-            s, ms = divmod(prediction_ms, 1000)
-            m, s = divmod(s, 60)
 
-            diff = laptime_ms - prediction_ms
-            future_laptime = last_lap_ms + diff
-            print("future_laptime" + str(future_laptime))
-            update_diff_last(future_laptime, last_lap_ms)
+            # Añade el nuevo conjunto de datos a la lista
+            last_10_steps.append(new_data)
 
-            if lap_times:
-                lap_times = [num for num in lap_times if num != 0]
-                diff_best = min(lap_times) + diff
-                print("Diffbest" + str(diff_best))
-                update_diff_best(diff_best, min(lap_times))
+            if len(last_10_steps) > 10:
+                last_10_steps.pop(0)
 
-            # Formatear en formato MM:SS:DD
-            prediction = "%02d:%02d:%03d" % (m, s, ms)
-            print(f"Predicted lap time: {prediction[0]}")
-            update_prediction(prediction)
+            if len(last_10_steps) == 10:
+                # Primero, normalizamos los datos de entrada usando el escalador que se usó durante el entrenamiento
+                input_sequence_normalized = scaler.transform(last_10_steps)
+               
+
+                # Luego, convertimos la lista a un array de numpy y expandimos sus dimensiones para que tenga la forma (1, 10, 5)
+                input_sequence = np.expand_dims(input_sequence_normalized, axis=0)
+
+                # Ahora, podemos alimentar esta secuencia a nuestro modelo para hacer una predicción
+                prediction_ms = model_lstm.predict(input_sequence)
+
+                # Haz algo con la predicción (por ejemplo, imprimirlo)
+                print(prediction_ms)
+
+            
+                
+                #prediction_ms = model_lstmconv.predict([[car_position, rpm, speed, acceleration, gear]])
+
+                s, ms = divmod(prediction_ms, 1000)
+                m, s = divmod(s, 60)
+
+                diff = laptime_ms - prediction_ms
+                future_laptime = last_lap_ms + diff
+                print("future_laptime" + str(future_laptime))
+                update_diff_last(future_laptime, last_lap_ms)
+
+                if lap_times:
+                    lap_times = [num for num in lap_times if num != 0]
+                    diff_best = min(lap_times) + diff
+                    print("Diffbest" + str(diff_best))
+                    update_diff_best(diff_best, min(lap_times))
+
+                # Formatear en formato MM:SS:DD
+                prediction = "%02d:%02d:%03d" % (m, s, ms)
+                print(f"Predicted lap time: {prediction[0]}")
+                update_prediction(prediction)
     
         update_gear(gear)
         update_speed(speed)

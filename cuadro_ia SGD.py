@@ -12,11 +12,9 @@ from keras.models import load_model
 listener = TelemetryListener(port=20777, host='localhost')
 
 # Carga el modelo entrenado
-regr = joblib.load('random_forest_regressor.pkl')
-model_lstm = load_model('lstm_model.h5')
-model_lstmconv = load_model('lstm_modelconv.h5')
-sgd = joblib.load('sgd_regressor.pkl')
+regr = joblib.load('sgd_regressor.pkl')
 scaler = joblib.load('scaler.pkl')
+model_lstm = load_model('lstm_model.h5')
 
 
 X = []
@@ -27,9 +25,9 @@ accelerations = []
 
 # Preparar la gráfica
 plt.ion()
-fig, ax = plt.subplots(figsize=(10, 2))  # Ajusta el tamaño de la figura aquí
-line, = ax.plot([], [])
-accel_line, = ax.plot([], [])
+fig, ax = plt.subplots()
+line, = ax.plot(speeds)
+accel_line, = ax.plot(accelerations)
 
 def update_graph():
     global line, speeds, accelerations, accel_line, ax
@@ -40,8 +38,6 @@ def update_graph():
     accel_line.set_xdata(range(len(accelerations)))
     ax.relim()
     ax.autoscale_view()
-    # Ajusta los límites del eje X para que abarquen todos los datos
-    ax.set_xlim(0, len(speeds))
     plt.draw()
     plt.pause(0.01)
 
@@ -50,8 +46,7 @@ root = tk.Tk()
 root.title("Velocidad en tiempo real")
 
 # Establecer la posición de la ventana de Tkinter
-root.geometry("+50+700")
-
+root.geometry("+50+50")
 
 gear_label = tk.Label(root, text="0", font=("Helvetica", 75))
 speed_label = tk.Label(root, text="0 KM/H", font=("Helvetica", 72), width=8)
@@ -62,9 +57,6 @@ prediction_label = tk.Label(root, text="0", font=("Helvetica", 20))
 diff_last_label = tk.Label(root, text="0", font=("Helvetica", 30))
 diff_best_label = tk.Label(root, text="0", font=("Helvetica", 30))
 
-# Agregar el botón de parada
-stop_button = tk.Button(root, text="Stop", command=root.quit)
-
 
 gear_label.pack()
 speed_label.pack()
@@ -73,8 +65,7 @@ car_position_label.pack()
 laptime_label.pack()
 prediction_label.pack()
 diff_last_label.pack()
-#diff_best_label.pack()
-stop_button.pack()
+diff_best_label.pack()
 
 def save_data_to_file(filename):
     data = {'X': X, 'y': y}
@@ -133,7 +124,7 @@ def update_diff_best(future_laptime_ms, last_lap):
     root.update()
 
 # Establecer la posición de la ventana de Matplotlib
-fig.canvas.manager.window.geometry("+700+200")
+fig.canvas.manager.window.geometry("+500+150")
 
 car_position = -1
 first_time = True
@@ -155,6 +146,10 @@ def best_lap(lap_times):
 
 
 while True:
+    lap_times.append(200000)
+    if lap_times:
+        lap_times = [num for num in lap_times if num != 0]
+        print("Bestlap: " + str(min(lap_times)))
     packet = listener.get()
     data = json.loads(str(packet))
     if data["m_header"]["m_packet_id"] == 6:
@@ -165,16 +160,19 @@ while True:
         speeds.append(speed)
         accelerations.append(acceleration*333)
 
-        # Si car_position es válido, agregamos los datos a X e y
+         # Si car_position es válido, agregamos los datos a X e y
         if car_position >= 0:
             X.append([car_position, rpm, speed, acceleration, gear])
             y.append(laptime_ms)  # Suponiendo que deseas predecir el tiempo de vuelta
-            
-            prediction_ms = regr.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = sgd.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = model_lstm.predict([[car_position, rpm, speed, acceleration, gear]])
-            #prediction_ms = model_lstmconv.predict([[car_position, rpm, speed, acceleration, gear]])
 
+            X_new = np.array([[car_position, rpm, speed, acceleration, gear]])
+            X_new = scaler.transform(X_new)
+            y_new = np.array([laptime_ms])
+
+            regr.partial_fit(X_new, y_new)
+
+            prediction_ms = regr.predict(X_new)
+            #prediction_ms = model_lstm.predict([[car_position, rpm, speed, acceleration, gear]])
             s, ms = divmod(prediction_ms, 1000)
             m, s = divmod(s, 60)
 
@@ -193,7 +191,11 @@ while True:
             prediction = "%02d:%02d:%03d" % (m, s, ms)
             print(f"Predicted lap time: {prediction[0]}")
             update_prediction(prediction)
-    
+            '''Voy a guardar el mejor tiempo de cada vuelta y lo que voy a hacer va a ser estimar
+            con la regresión el tiempo y medir la diferencia y sumarsela al best laptime en tiempo real.
+            Una manera buena de representar visualmente podría ser con una recta y dos pelotas de colores.
+            
+            Por otra parte voy a investigar la manera de hacer un modelo que prediga stints de neumáticos'''
         update_gear(gear)
         update_speed(speed)
         update_rpm(rpm)
@@ -217,24 +219,27 @@ while True:
             print("=======================================================================================================")
             data_number += 1
             save_data_to_file(str(data_number)+'.json')
-            '''if(y[-1] > 20000):
+            if(y[-1] > 20000):
                 lap_times.append(y[-1])
             elif(y[-1] < 20000):
-                lap_times.append(y[-2])'''
-            # Guarda el gráfico de telemetría después de cada vuelta
-            plt.savefig(f'telemetry_{data_number}.svg', format='svg')
-            plt.clf()
-            plt.cla()
-            speeds = []
-            accelerations = []
-
-            # Preparar la gráfica
-            plt.ion()
-            fig, ax = plt.subplots(figsize=(10, 2))  # Ajusta el tamaño de la figura aquí
-            line, = ax.plot([], [])
-            accel_line, = ax.plot([], [])
+                lap_times.append(y[-2])
+            
             X.clear()
             y.clear()
+
+    '''if car_position < 1 and car_position >= 0. and first_time == True:
+        first_time = False
+    elif car_position < 1 and first_time == False:
+        data_number += 1
+        save_data_to_file(str(data_number)+'.json')'''
+    
+    '''
+    if laptime == 0:
+        print("=======================================================================================================")
+        data_number += 1
+        save_data_to_file(str(data_number)+'.json')
+        X.clear
+        y.clear'''
         
 
 
